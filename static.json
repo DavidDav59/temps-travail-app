@@ -1,0 +1,14 @@
+{
+  "headers": {
+    "/sw.js": {
+      "Cache-Control": "public, max-age=0, must-revalidate"
+    },
+    "/manifest.json": {
+      "Cache-Control": "public, max-age=0, must-revalidate"
+    }
+  },
+  "clean_urls": true,
+  "routes": {
+    "/**": "index.html"
+  }
+}
