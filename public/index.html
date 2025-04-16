@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+  <meta name="theme-color" content="#4caf50" />
+  <title>Temps de Travail</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    .day-container { margin-bottom: 20px; }
+    label { display: block; margin: 5px 0; }
+    .total-time { font-weight: bold; margin-top: 20px; padding: 10px; border-radius: 8px; }
+    .vert { background-color: #c8f7c5; }
+    .orange { background-color: #ffe0b2; }
+    .rouge { background-color: #ffb3b3; }
+    .daily-time { margin-top: 5px; font-weight: bold; padding: 5px; border-radius: 6px; width: fit-content; }
+    button { margin-top: 20px; padding: 10px 20px; }
+    .pause-input { width: 50px; }
+    .semaphore { font-size: 2em; margin-top: 20px; }
+    .icon-status { font-size: 1.5em; margin-left: 10px; }
+    .global-summary { margin-top: 30px; font-size: 1.2em; }
+    .clignotant { animation: clignote 1s infinite; }
+    .orange { color: orange; }
+    .rouge { color: red; }
+    @keyframes clignote {
+      0% { opacity: 1; }
+      50% { opacity: 0; }
+      100% { opacity: 1; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Temps de travail</h1>
+  <form id="workForm">
+    <label>Nom : <input type="text" name="nom" required></label>
+    <label>Prénom : <input type="text" name="prenom" required></label>
+    <div id="daysContainer"></div>
+    <button type="button" onclick="exportToPDF()">Exporter en PDF</button>
+    <button type="button" onclick="resetWeek()">Réinitialiser la semaine</button>
+  </form>
+  <div id="result" class="total-time"></div>
+  <div id="semaphore" class="semaphore"></div>
+  <div id="globalSummary" class="global-summary"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script>
+    const days = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+    const container = document.getElementById('daysContainer');
+
+    const getWeekDates = () => {
+      const today = new Date();
+      const dayOfWeek = today.getDay() || 7;
+      const monday = new Date(today);
+      monday.setDate(today.getDate() - dayOfWeek + 1);
+      const mondayKey = monday.toISOString().split('T')[0];
+      const storedKey = localStorage.getItem('weeklyDataKey');
+      if (storedKey !== mondayKey) {
+        localStorage.removeItem('weeklyData');
+        localStorage.setItem('weeklyDataKey', mondayKey);
+      }
+      const dates = [];
+      for (let i = 0; i < 6; i++) {
+        const d = new Date(monday);
+        d.setDate(monday.getDate() + i);
+        dates.push(d.toISOString().split('T')[0]);
+      }
+      return dates;
+    };
+
+    const dates = getWeekDates();
+
+    days.forEach((day, index) => {
+      container.innerHTML += `
+        <div class="day-container" id="container_${day}">
+          <h3>${day} - <input type="date" name="date_${day}" value="${dates[index]}" ${index === 0 ? '' : 'readonly'} onchange="syncDates(this.value)"></h3>
+          <label>Heure début : <input type="time" name="start_${day}" onchange="calculateTotal()" required></label>
+          <label>Heure fin : <input type="time" name="end_${day}" onchange="calculateTotal()" required></label>
+          <label>Pause (minutes) : <input type="number" step="1" name="pause_${day}" value="" class="pause-input" onchange="calculateTotal()"></label>
+          <div id="daily_${day}" class="daily-time"></div>
+        </div>
+      `;
+    });
+
+    function syncDates(lundiDate) {
+      const startDate = new Date(lundiDate);
+      days.forEach((day, i) => {
+        const input = document.querySelector(`[name='date_${day}']`);
+        if (i > 0) {
+          const d = new Date(startDate);
+          d.setDate(d.getDate() + i);
+          input.value = d.toISOString().split('T')[0];
+        }
+      });
+      calculateTotal();
+    }
+
+    function timeDiff(start, end, pauseMinutes) {
+      const [sh, sm] = start.split(':').map(Number);
+      const [eh, em] = end.split(':').map(Number);
+      let total = (eh * 60 + em) - (sh * 60 + sm);
+      return Math.max(0, total - pauseMinutes);
+    }
+
+    function formatHM(minutes) {
+      const h = Math.floor(minutes / 60);
+      const m = minutes % 60;
+      return `${h}h${m.toString().padStart(2, '0')}`;
+    }
+
+    function calculateTotal() {
+      let totalMinutes = 0;
+      let summaryIcons = '';
+      days.forEach(day => {
+        const start = document.querySelector(`[name='start_${day}']`).value;
+        const end = document.querySelector(`[name='end_${day}']`).value;
+        const pause = parseFloat(document.querySelector(`[name='pause_${day}']`).value || 0);
+        const display = document.getElementById(`daily_${day}`);
+        if (start && end) {
+          const minutes = timeDiff(start, end, pause);
+          totalMinutes += minutes;
+          let colorClass = minutes < 660 ? 'vert' : (minutes <= 720 ? 'orange' : 'rouge');
+          display.textContent = `Temps travaillé : ${formatHM(minutes)}`;
+          display.className = `daily-time ${colorClass}`;
+          if (minutes < 720) {
+            summaryIcons += '✅ ';
+          } else {
+            summaryIcons += '❌ ';
+          }
+        } else {
+          display.textContent = '';
+          display.className = 'daily-time';
+          summaryIcons += '❌ ';
+        }
+      });
+
+      const result = document.getElementById('result');
+      result.textContent = `Total heures semaine : ${formatHM(totalMinutes)}`;
+      result.className = 'total-time';
+      let globalClass = totalMinutes <= 3120 ? 'vert' : 'rouge';
+      result.classList.add(globalClass);
+
+      const semaphore = document.getElementById('semaphore');
+      semaphore.classList.remove('clignotant', 'orange', 'rouge');
+      if (totalMinutes <= 3000) {
+        semaphore.textContent = '🟢 Temps de travail OK';
+      } else if (totalMinutes > 3000 && totalMinutes <= 3120) {
+        semaphore.textContent = '🟠 Attention : Temps de travail bientôt à 52h';
+        semaphore.classList.add('clignotant', 'orange');
+      } else {
+        semaphore.textContent = '🔴 Dépassement temps de travail';
+        semaphore.classList.add('clignotant', 'rouge');
+      }
+
+    }
+
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      let y = 10;
+
+      const nom = document.querySelector("[name='nom']").value;
+      const prenom = document.querySelector("[name='prenom']").value;
+
+      doc.setFontSize(14);
+      doc.text(`Nom : ${nom}`, 10, y);
+      y += 8;
+      doc.text(`Prénom : ${prenom}`, 10, y);
+      y += 10;
+
+      let totalMinutes = 0;
+      days.forEach(day => {
+        const date = document.querySelector(`[name='date_${day}']`).value;
+        const start = document.querySelector(`[name='start_${day}']`).value;
+        const end = document.querySelector(`[name='end_${day}']`).value;
+        const pause = document.querySelector(`[name='pause_${day}']`).value;
+        let minutes = 0;
+        if (start && end) minutes = timeDiff(start, end, parseFloat(pause || 0));
+        totalMinutes += minutes;
+        doc.setFontSize(11);
+        doc.text(`${day} (${date}) : ${start} - ${end}, Pause: ${pause || 0} min, Travaillé: ${formatHM(minutes)}`, 10, y);
+        y += 8;
+        if (y > 280) { doc.addPage(); y = 10; }
+      });
+
+      doc.setFontSize(12);
+      y += 5;
+      doc.text(`Total semaine : ${formatHM(totalMinutes)}`, 10, y);
+      doc.save("temps_travail_semaine.pdf");
+    }
+
+    function resetWeek() {
+      localStorage.removeItem('weeklyData');
+      location.reload();
+    }
+
+    window.onload = () => {
+      const data = JSON.parse(localStorage.getItem('weeklyData'));
+      if (data) {
+        for (let key in data) {
+          const el = document.querySelector("[name='nom']").focus();
+          if (el) el.value = data[key];
+        }
+      }
+      calculateTotal();
+    };
+  </script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('sw.js')
+        .then(reg => console.log('Service Worker enregistré', reg))
+        .catch(err => console.error('Erreur SW', err));
+    }
+  </script>
+  <script>
+  // Navigation au clavier dans l'ordre du formulaire
+  const inputs = Array.from(document.querySelectorAll('#workForm input'));
+
+  inputs.forEach((input, i) => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const next = inputs[i + 1];
+        if (next) {
+          next.focus();
+        } else {
+          // Si on est au dernier champ, focus sur le bouton PDF
+          document.querySelector("button[onclick='exportToPDF()']").focus();
+        }
+      }
+    });
+  });
+
+  // Focus automatique sur le champ "Nom" au chargement
+  window.onload = () => {
+    const data = JSON.parse(localStorage.getItem('weeklyData'));
+    if (data) {
+      for (let key in data) {
+        const el = document.querySelector(`[name='${key}']`);
+        if (el) el.value = data[key];
+      }
+    }
+    calculateTotal();
+    document.querySelector("[name='nom']").focus();
+  };
+</script>
+</body>
+</html>
