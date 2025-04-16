@@ -199,7 +199,7 @@
       const data = JSON.parse(localStorage.getItem('weeklyData'));
       if (data) {
         for (let key in data) {
-          const el = document.querySelector(`[name='${key}']`);
+          const el = document.querySelector("[name='nom']").focus();
           if (el) el.value = data[key];
         }
       }
@@ -213,5 +213,37 @@
         .catch(err => console.error('Erreur SW', err));
     }
   </script>
+  <script>
+  // Navigation au clavier dans l'ordre du formulaire
+  const inputs = Array.from(document.querySelectorAll('#workForm input'));
+
+  inputs.forEach((input, i) => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const next = inputs[i + 1];
+        if (next) {
+          next.focus();
+        } else {
+          // Si on est au dernier champ, focus sur le bouton PDF
+          document.querySelector("button[onclick='exportToPDF()']").focus();
+        }
+      }
+    });
+  });
+
+  // Focus automatique sur le champ "Nom" au chargement
+  window.onload = () => {
+    const data = JSON.parse(localStorage.getItem('weeklyData'));
+    if (data) {
+      for (let key in data) {
+        const el = document.querySelector(`[name='${key}']`);
+        if (el) el.value = data[key];
+      }
+    }
+    calculateTotal();
+    document.querySelector("[name='nom']").focus();
+  };
+</script>
 </body>
 </html>
